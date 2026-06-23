@@ -1,0 +1,73 @@
+-- ============================================================
+-- SECURE VIEWS: WILD_CARD.BRONZE → CX.BRONZE
+-- ============================================================
+-- Triagem por brand_id CX: 34126647548180, 43696510017940
+-- Entidades sem brand_id: replicadas integralmente
+-- ============================================================
+
+-- ============================================================
+-- 1. VIEWS EM CX.BRONZE
+-- ============================================================
+
+-- 1.1 Tickets (filtrado por brand_id CX)
+CREATE OR REPLACE VIEW CX.BRONZE.ZENDESK_TICKETS AS
+SELECT
+    RAW_DATA,
+    _SNOWFLAKE_LOADED_AT
+FROM WILD_CARD.BRONZE.ZENDESK_TICKETS
+WHERE RAW_DATA:brand_id::NUMBER IN (34126647548180, 43696510017940);
+
+-- 1.2 Tickets Events (filtrado por ticket_id presente nos tickets CX)
+CREATE OR REPLACE VIEW CX.BRONZE.ZENDESK_TICKETS_EVENTS AS
+SELECT
+    E.RAW_DATA,
+    E._SNOWFLAKE_LOADED_AT
+FROM WILD_CARD.BRONZE.ZENDESK_TICKETS_EVENTS E
+WHERE EXISTS (
+    SELECT 1
+    FROM WILD_CARD.BRONZE.ZENDESK_TICKETS T
+    WHERE T.RAW_DATA:id::TEXT = E.RAW_DATA:ticket_id::TEXT
+      AND T.RAW_DATA:brand_id::NUMBER IN (34126647548180, 43696510017940)
+);
+
+-- 1.3 Ticket Metrics (sem brand_id — todas)
+CREATE OR REPLACE VIEW CX.BRONZE.ZENDESK_TICKET_METRICS AS
+SELECT
+    RAW_DATA,
+    _SNOWFLAKE_LOADED_AT
+FROM WILD_CARD.BRONZE.ZENDESK_TICKET_METRICS;
+
+-- 1.3.1 Ticket Metrics FULL (snapshot agregado — fonte primária pós 2026-05-04)
+CREATE OR REPLACE VIEW CX.BRONZE.ZENDESK_TICKET_METRICS_FULL AS
+SELECT
+    RAW_DATA,
+    _SNOWFLAKE_LOADED_AT
+FROM WILD_CARD.BRONZE.ZENDESK_TICKET_METRICS_FULL;
+
+-- 1.4 Ticket Fields (sem brand_id — todas)
+CREATE OR REPLACE VIEW CX.BRONZE.ZENDESK_TICKET_FIELDS AS
+SELECT
+    RAW_DATA,
+    _SNOWFLAKE_LOADED_AT
+FROM WILD_CARD.BRONZE.ZENDESK_TICKET_FIELDS;
+
+-- 1.5 Groups (sem brand_id — todas)
+CREATE OR REPLACE VIEW CX.BRONZE.ZENDESK_GROUPS AS
+SELECT
+    RAW_DATA,
+    _SNOWFLAKE_LOADED_AT
+FROM WILD_CARD.BRONZE.ZENDESK_GROUPS;
+
+-- 1.6 Organizations (sem brand_id — todas)
+CREATE OR REPLACE VIEW CX.BRONZE.ZENDESK_ORGANIZATIONS AS
+SELECT
+    RAW_DATA,
+    _SNOWFLAKE_LOADED_AT
+FROM WILD_CARD.BRONZE.ZENDESK_ORGANIZATIONS;
+
+-- 1.7 Users (sem brand_id — todas)
+CREATE OR REPLACE VIEW CX.BRONZE.ZENDESK_USERS AS
+SELECT
+    RAW_DATA,
+    _SNOWFLAKE_LOADED_AT
+FROM WILD_CARD.BRONZE.ZENDESK_USERS;
