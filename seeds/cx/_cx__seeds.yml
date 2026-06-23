@@ -1,0 +1,46 @@
+version: 2
+
+# Seeds de referência do domínio CX (não têm equivalente VARIANT bruto — são tabelas de
+# apoio que tornam as regras do pipeline orientadas a dados em vez de fixas no SQL).
+
+seeds:
+  - name: zendesk_brands
+    description: >-
+      Mapa brand_id → nome legível das marcas CX (equivale a CX.GOLD.ZENDESK_BRANDS).
+      Os nomes são placeholders — substitua pelos nomes reais das marcas. Esses dois
+      brand_ids são o filtro CX aplicado nas views de bronze (script 03).
+    config:
+      quote_columns: false
+      schema: cx
+    columns:
+      - name: brand_id
+        description: ID da marca no Zendesk.
+        tests: [unique, not_null]
+      - name: brand_name
+        description: Nome legível da marca (placeholder).
+        tests: [not_null]
+
+  - name: zendesk_custom_field_map
+    description: >-
+      Mapa id do custom field → coluna CF_* e rótulo. Espelha o pivot fixo de custom_fields
+      do script 04 (silver de tickets) — 17 campos em tickets — mais o campo usado no unpivot
+      de eventos (Status de Transbordo). Use este seed para dirigir o pivot, em vez de fixar
+      os ids no SQL.
+    config:
+      quote_columns: false
+      schema: cx
+    columns:
+      - name: field_id
+        description: ID do custom field no Zendesk.
+        tests: [unique, not_null]
+      - name: column_name
+        description: Nome da coluna CF_* gerada no modelo de tickets.
+        tests: [unique, not_null]
+      - name: label_pt
+        description: Rótulo legível do campo, em português.
+        tests: [not_null]
+      - name: used_in
+        description: Onde o campo é consumido (tickets ou events).
+        tests:
+          - accepted_values:
+              values: ['tickets', 'events']

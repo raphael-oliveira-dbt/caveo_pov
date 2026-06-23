@@ -1,0 +1,81 @@
+version: 2
+
+# Estes seeds reproduzem as tabelas brutas WILD_CARD.BRONZE.ZENDESK_*, que armazenam uma
+# coluna VARIANT (RAW_DATA) por registro mais um timestamp de carga. Aqui o RAW_DATA é
+# guardado como string JSON em `raw_data`; os modelos de staging aplicam PARSE_JSON
+# (Snowflake) e extraem campos via `raw_data:campo::tipo`, exatamente como as procedures de
+# origem. Trocar um modelo de staging de seed → fonte real exige mudar apenas a CTE de import
+# (o seed precisa de PARSE_JSON; a coluna real já é VARIANT).
+#
+# Integridade referencial dos dados fictícios:
+#   groups          10–13
+#   organizations   100–103  (cada → um grupo)
+#   users           200–202 internos (agent/admin), 300–303 clientes (cada → uma organização)
+#   tickets         1001–1007 são marcas CX; 1099 é NÃO-CX e DEVE ser filtrado pela view
+#                   CX.BRONZE (brand_id fora do conjunto CX).
+#   tickets_events  audits 90001–90005; child_events contêm eventos Comment + Change.
+#   ticket_metrics       legado; reply_time_in_minutes nulo (pós 2026-05-04) → filtrado.
+#   ticket_metrics_full  sideload metric_sets; fonte autoritativa de reply/resolution times.
+
+seeds:
+  - name: zendesk_groups
+    description: "Grupos de atendentes Zendesk (fictícios, formato VARIANT bruto). Espelha WILD_CARD.BRONZE.ZENDESK_GROUPS."
+    config: &raw_cfg
+      quote_columns: false
+      schema: bronze
+      column_types:
+        raw_data: varchar
+        _snowflake_loaded_at: timestamp_ntz
+    columns:
+      - name: raw_data
+        description: "String JSON do registro Zendesk (aplicar PARSE_JSON no staging)."
+        tests: [not_null]
+
+  - name: zendesk_organizations
+    description: "Organizações Zendesk fictícias. Espelha WILD_CARD.BRONZE.ZENDESK_ORGANIZATIONS."
+    config: *raw_cfg
+    columns:
+      - name: raw_data
+        tests: [not_null]
+
+  - name: zendesk_users
+    description: "Usuários Zendesk fictícios (atendentes, admin, clientes). Espelha WILD_CARD.BRONZE.ZENDESK_USERS."
+    config: *raw_cfg
+    columns:
+      - name: raw_data
+        tests: [not_null]
+
+  - name: zendesk_ticket_fields
+    description: "Definições de campos de ticket, incl. custom_field_options. Espelha WILD_CARD.BRONZE.ZENDESK_TICKET_FIELDS."
+    config: *raw_cfg
+    columns:
+      - name: raw_data
+        tests: [not_null]
+
+  - name: zendesk_tickets
+    description: "Tickets fictícios com array custom_fields. O 1099 é de marca não-CX (filtrado pela view CX). Espelha WILD_CARD.BRONZE.ZENDESK_TICKETS."
+    config: *raw_cfg
+    columns:
+      - name: raw_data
+        tests: [not_null]
+
+  - name: zendesk_tickets_events
+    description: "Audits de ticket com child_events aninhados (Comment + Change). Espelha WILD_CARD.BRONZE.ZENDESK_TICKETS_EVENTS."
+    config: *raw_cfg
+    columns:
+      - name: raw_data
+        tests: [not_null]
+
+  - name: zendesk_ticket_metrics
+    description: "ticket_metric_events legado (reply_time nulo pós 2026-05-04). Espelha WILD_CARD.BRONZE.ZENDESK_TICKET_METRICS."
+    config: *raw_cfg
+    columns:
+      - name: raw_data
+        tests: [not_null]
+
+  - name: zendesk_ticket_metrics_full
+    description: "Sideload metric_sets — fonte autoritativa de reply/resolution times. Espelha WILD_CARD.BRONZE.ZENDESK_TICKET_METRICS_FULL."
+    config: *raw_cfg
+    columns:
+      - name: raw_data
+        tests: [not_null]
