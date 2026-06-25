@@ -1,0 +1,96 @@
+version: 2
+
+models:
+  - name: fct_tickets
+    description: "Tabela fato principal de tickets de CX, com um registro por ticket e atributos operacionais, métricas e campos customizados relevantes para análise."
+    columns:
+      - name: ticket_id
+        description: "Identificador único do ticket no Zendesk."
+        data_tests: [unique, not_null]
+      - name: assignee_id
+        description: "Identificador do agente responsável pelo ticket no momento refletido pelo registro mais recente."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_agents')
+                field: agent_id
+      - name: requester_id
+        description: "Identificador do usuário solicitante do ticket."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_users')
+                field: user_id
+      - name: organization_id
+        description: "Identificador da organização associada ao ticket."
+      - name: group_id
+        description: "Identificador do grupo responsável pelo ticket."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_groups')
+                field: group_id
+
+  - name: dim_users
+    description: "Dimensão de usuários do Zendesk com atributos cadastrais e operacionais relevantes para análise de tickets."
+    columns:
+      - name: user_id
+        description: "Identificador único do usuário no Zendesk."
+        data_tests: [unique, not_null]
+      - name: role
+        description: "Papel do usuário no Zendesk, padronizado em caixa alta."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['AGENT', 'ADMIN', 'END-USER']
+
+  - name: dim_agents
+    description: "Dimensão de agentes do Zendesk utilizada para análises de atendimento e roteamento de tickets."
+    columns:
+      - name: agent_id
+        description: "Identificador único do agente no Zendesk."
+        data_tests: [unique, not_null]
+
+  - name: dim_groups
+    description: "Dimensão de grupos do Zendesk utilizada para análises de filas e responsabilidade por tickets."
+    columns:
+      - name: group_id
+        description: "Identificador único do grupo no Zendesk."
+        data_tests: [unique, not_null]
+
+  - name: fct_ticket_events
+    description: "Tabela fato de histórico de alterações dos tickets, com uma linha por combinação de evento e campo alterado."
+    columns:
+      - name: id
+        description: "Identificador do evento que originou a alteração registrada."
+        data_tests: [not_null]
+      - name: ticket_id
+        description: "Identificador do ticket ao qual o evento pertence."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fct_tickets')
+                field: ticket_id
+      - name: field_name
+        description: "Nome do campo alterado no evento; junto com id, define a granularidade da tabela."
+        data_tests: [not_null]
+
+  - name: fct_ticket_comments
+    description: "Tabela fato de comentários de tickets, com um registro por comentário e foco em metadados para análise."
+    columns:
+      - name: id
+        description: "Identificador único do comentário no Zendesk."
+        data_tests: [unique, not_null]
+      - name: ticket_id
+        description: "Identificador do ticket ao qual o comentário pertence."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fct_tickets')
+                field: ticket_id
+
+  - name: zendesk_ticket_field_options
+    description: "Lista as opções disponíveis para campos customizados de ticket a partir da configuração dos ticket fields no Zendesk."
+
+  - name: kpi_tickets
+    description: "Modelo reservado para KPIs de tickets, mantido desabilitado até a definição da lógica de negócio correspondente."

@@ -1,0 +1,80 @@
+version: 2
+
+models:
+  - name: stg_zendesk__groups
+    description: "Grupos do Zendesk com tipagem dos campos principais e remoção de duplicidades da camada bronze."
+    columns:
+      - name: group_id
+        description: "Identificador único do grupo no Zendesk."
+        data_tests: [unique, not_null]
+
+  - name: stg_zendesk__organizations
+    description: "Organizações do Zendesk com tipagem dos campos principais e remoção de duplicidades."
+    columns:
+      - name: organization_id
+        description: "Identificador único da organização no Zendesk."
+        data_tests: [unique, not_null]
+      - name: group_id
+        description: "Identificador do grupo associado à organização, quando informado no Zendesk."
+
+  - name: stg_zendesk__users
+    description: "Usuários do Zendesk com campos tipados, padronização textual e um registro mais recente por usuário."
+    columns:
+      - name: user_id
+        description: "Identificador único do usuário no Zendesk."
+        data_tests: [unique, not_null]
+      - name: role
+        description: "Papel do usuário no Zendesk, padronizado em caixa alta."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['AGENT', 'ADMIN', 'END-USER']
+
+  - name: stg_zendesk__ticket_fields
+    description: "Definições dos campos de ticket do Zendesk, incluindo metadados e opções de campos customizados."
+    columns:
+      - name: field_id
+        description: "Identificador único do campo de ticket no Zendesk."
+        data_tests: [unique, not_null]
+
+  - name: stg_zendesk__tickets
+    description: "Tickets das marcas de CX com os principais atributos extraídos do payload bruto e um registro mais recente por ticket."
+    columns:
+      - name: ticket_id
+        description: "Identificador único do ticket no Zendesk."
+        data_tests: [unique, not_null]
+      - name: status
+        description: "Status atual do ticket, padronizado em caixa alta."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['NEW', 'OPEN', 'PENDING', 'HOLD', 'SOLVED', 'CLOSED']
+      - name: assignee_id
+        description: "Identificador do agente atualmente responsável pelo ticket."
+      - name: requester_id
+        description: "Identificador do usuário que abriu ou solicitou o ticket."
+      - name: organization_id
+        description: "Identificador da organização vinculada ao ticket."
+      - name: group_id
+        description: "Identificador do grupo responsável pelo ticket."
+
+  - name: stg_zendesk__tickets_events
+    description: "Auditorias de tickets das marcas de CX, preservando o conteúdo bruto dos eventos filhos para transformação posterior."
+    columns:
+      - name: audit_id
+        description: "Identificador único da auditoria do ticket no Zendesk."
+        data_tests: [unique, not_null]
+
+  - name: stg_zendesk__ticket_metrics
+    description: "Métricas legadas de tickets mantidas para compor o histórico antes da fonte completa de métricas."
+    columns:
+      - name: ticket_metric_id
+        description: "Identificador único do registro de métrica legado."
+        data_tests: [unique, not_null]
+
+  - name: stg_zendesk__ticket_metrics_full
+    description: "Métricas completas de tickets obtidas da fonte mais recente, tratadas como a versão autoritativa após 2026-05-04."
+    columns:
+      - name: ticket_metric_id
+        description: "Identificador único do registro de métrica na fonte completa."
+        data_tests: [unique, not_null]
