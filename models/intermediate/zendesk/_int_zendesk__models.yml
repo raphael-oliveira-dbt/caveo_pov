@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: int_zendesk__tickets_metrics_joined
+    description: "Consolida as métricas legadas e completas de tickets, preservando apenas a versão mais recente de cada ticket."
+    columns:
+      - name: ticket_id
+        description: "Identificador único do ticket usado como chave da consolidação de métricas."
+        data_tests: [unique, not_null]
+
+  - name: int_zendesk__tickets_custom_fields
+    description: "Transforma os custom_fields dos tickets em colunas analíticas guiadas pelo seed de mapeamento de campos."
+    columns:
+      - name: ticket_id
+        description: "Identificador único do ticket ao qual os campos customizados pertencem."
+        data_tests: [unique, not_null]
+
+  - name: int_zendesk__ticket_events_unpivoted
+    description: "Expande as auditorias e seus eventos filhos em um conjunto normalizado com uma linha por campo alterado em cada evento."
+    columns:
+      - name: id
+        description: "Identificador do evento filho ou do evento legado que originou a linha."
+        data_tests: [not_null]
+      - name: field_name
+        description: "Nome do campo alterado no evento, usado para definir a granularidade analítica do histórico de mudanças."
+        data_tests: [not_null]
+
+  - name: int_zendesk__ticket_comments
+    description: "Extrai comentários de tickets a partir das auditorias, preservando os metadados necessários para análise."
+    columns:
+      - name: id
+        description: "Identificador único do comentário no Zendesk."
+        data_tests: [unique, not_null]
