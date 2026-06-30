@@ -11,11 +11,11 @@ version: 2
 #   groups          10–13
 #   organizations   100–103  (cada → um grupo)
 #   users           200–202 internos (agent/admin), 300–303 clientes (cada → uma organização)
-#   tickets         1001–1007 são marcas CX; 1099 é NÃO-CX e DEVE ser filtrado pela view
+#   tickets         1001–1012 são marcas CX; 1099 é NÃO-CX e DEVE ser filtrado pela view
 #                   CX.BRONZE (brand_id fora do conjunto CX).
-#   tickets_events  audits 90001–90005; child_events contêm eventos Comment + Change.
+#   tickets_events  audits 90001–90010; child_events contêm eventos Comment + Change.
 #   ticket_metrics       legado; reply_time_in_minutes nulo (pós 2026-05-04) → filtrado.
-#   ticket_metrics_full  sideload metric_sets; fonte autoritativa de reply/resolution times.
+#   ticket_metrics_full_flat  seed simplificado para dev, sem JSON bruto embutido em CSV.
 
 seeds:
   - name: zendesk_groups
@@ -29,53 +29,85 @@ seeds:
     columns:
       - name: raw_data
         description: "String JSON do registro Zendesk (aplicar PARSE_JSON no staging)."
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: zendesk_organizations
     description: "Organizações Zendesk fictícias. Espelha WILD_CARD.BRONZE.ZENDESK_ORGANIZATIONS."
     config: *raw_cfg
     columns:
       - name: raw_data
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: zendesk_users
     description: "Usuários Zendesk fictícios (atendentes, admin, clientes). Espelha WILD_CARD.BRONZE.ZENDESK_USERS."
     config: *raw_cfg
     columns:
       - name: raw_data
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: zendesk_ticket_fields
     description: "Definições de campos de ticket, incl. custom_field_options. Espelha WILD_CARD.BRONZE.ZENDESK_TICKET_FIELDS."
     config: *raw_cfg
     columns:
       - name: raw_data
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: zendesk_tickets
     description: "Tickets fictícios com array custom_fields. O 1099 é de marca não-CX (filtrado pela view CX). Espelha WILD_CARD.BRONZE.ZENDESK_TICKETS."
     config: *raw_cfg
     columns:
       - name: raw_data
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: zendesk_tickets_events
     description: "Audits de ticket com child_events aninhados (Comment + Change). Espelha WILD_CARD.BRONZE.ZENDESK_TICKETS_EVENTS."
     config: *raw_cfg
     columns:
       - name: raw_data
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: zendesk_ticket_metrics
     description: "ticket_metric_events legado (reply_time nulo pós 2026-05-04). Espelha WILD_CARD.BRONZE.ZENDESK_TICKET_METRICS."
     config: *raw_cfg
     columns:
       - name: raw_data
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: zendesk_ticket_metrics_full
-    description: "Sideload metric_sets — fonte autoritativa de reply/resolution times. Espelha WILD_CARD.BRONZE.ZENDESK_TICKET_METRICS_FULL."
+    description: "Seed legado mantido apenas para compatibilidade com o caminho raw_data/VARIANT."
     config: *raw_cfg
     columns:
       - name: raw_data
-        tests: [not_null]
+        data_tests: [not_null]
+
+  - name: zendesk_ticket_metrics_full_flat
+    description: "Métricas completas de ticket em formato tabular simplificado para desenvolvimento com seeds."
+    config:
+      quote_columns: false
+      schema: bronze
+      column_types:
+        id: number
+        ticket_id: number
+        reopens: number
+        replies: number
+        assignee_stations: number
+        group_stations: number
+        agent_wait_time_in_minutes: varchar
+        requester_wait_time_in_minutes: varchar
+        first_resolution_time_in_minutes: varchar
+        full_resolution_time_in_minutes: varchar
+        on_hold_time_in_minutes: varchar
+        reply_time_in_minutes: varchar
+        assigned_at: varchar
+        initially_assigned_at: varchar
+        solved_at: varchar
+        latest_comment_added_at: varchar
+        created_at: varchar
+        updated_at: varchar
+        datalake_updated_at: varchar
+        _snowflake_loaded_at: timestamp_ntz
+    columns:
+      - name: id
+        data_tests: [not_null, unique]
+      - name: ticket_id
+        data_tests: [not_null]

@@ -3,12 +3,93 @@ version: 2
 models:
   - name: fct_tickets
     description: "Tabela fato principal de tickets de CX, com um registro por ticket e atributos operacionais, métricas e campos customizados relevantes para análise."
+    semantic_model:
+      enabled: true
+    agg_time_dimension: created_at
+    metrics:
+      - name: total_tickets
+        description: "Quantidade total de tickets no Zendesk."
+        label: "Total de tickets"
+        type: simple
+        agg: count_distinct
+        expr: ticket_id
+
+      - name: tickets_resolvidos
+        description: "Quantidade de tickets com data de resolução preenchida."
+        label: "Tickets resolvidos"
+        type: simple
+        agg: count_distinct
+        expr: case when solved_at is not null then ticket_id end
+
+      - name: tickets_em_aberto
+        description: "Quantidade de tickets que permanecem abertos ou pendentes de encerramento."
+        label: "Tickets em aberto"
+        type: simple
+        agg: count_distinct
+        expr: case when lower(coalesce(status, '')) not in ('solved', 'closed') then ticket_id end
+
+      - name: tempo_medio_primeira_resposta_minutos
+        description: "Tempo médio de primeira resposta ao ticket, em minutos."
+        label: "Tempo médio de primeira resposta (min)"
+        type: simple
+        agg: average
+        expr: reply_time_in_minutes
+
+      - name: tempo_medio_resolucao_total_minutos
+        description: "Tempo médio de resolução total do ticket, em minutos."
+        label: "Tempo médio de resolução total (min)"
+        type: simple
+        agg: average
+        expr: full_resolution_time_in_minutes
+
+      - name: tickets_reabertos
+        description: "Quantidade de tickets que tiveram ao menos uma reabertura."
+        label: "Tickets reabertos"
+        type: simple
+        agg: count_distinct
+        expr: case when coalesce(reopens, 0) > 0 then ticket_id end
+
+      - name: taxa_reabertura
+        description: "Percentual de tickets reabertos em relação ao total de tickets."
+        label: "Taxa de reabertura"
+        type: derived
+        expr: tickets_reabertos * 1.0 / nullif(total_tickets, 0)
+        input_metrics:
+          - name: tickets_reabertos
+          - name: total_tickets
+
+      - name: media_respostas_por_ticket
+        description: "Quantidade média de respostas por ticket."
+        label: "Média de respostas por ticket"
+        type: simple
+        agg: average
+        expr: replies
+
+      - name: media_handoffs_grupo_por_ticket
+        description: "Quantidade média de trocas de grupo por ticket."
+        label: "Média de handoffs de grupo por ticket"
+        type: simple
+        agg: average
+        expr: group_stations
+
+      - name: media_handoffs_agente_por_ticket
+        description: "Quantidade média de trocas de agente por ticket."
+        label: "Média de handoffs de agente por ticket"
+        type: simple
+        agg: average
+        expr: assignee_stations
     columns:
       - name: ticket_id
         description: "Identificador único do ticket no Zendesk."
+        entity:
+          type: primary
+          name: ticket
         data_tests: [unique, not_null]
       - name: assignee_id
         description: "Identificador do agente responsável pelo ticket no momento refletido pelo registro mais recente."
+        entity:
+          type: foreign
+          name: agente
         data_tests:
           - relationships:
               arguments:
@@ -16,6 +97,9 @@ models:
                 field: agent_id
       - name: requester_id
         description: "Identificador do usuário solicitante do ticket."
+        entity:
+          type: foreign
+          name: solicitante
         data_tests:
           - relationships:
               arguments:
@@ -23,13 +107,93 @@ models:
                 field: user_id
       - name: organization_id
         description: "Identificador da organização associada ao ticket."
+        entity:
+          type: foreign
+          name: organizacao
       - name: group_id
         description: "Identificador do grupo responsável pelo ticket."
+        entity:
+          type: foreign
+          name: grupo
         data_tests:
           - relationships:
               arguments:
                 to: ref('dim_groups')
                 field: group_id
+      - name: brand_id
+        description: "Identificador da marca associada ao ticket."
+        entity:
+          type: foreign
+          name: marca
+      - name: submitter_id
+        description: "Identificador do usuário que submeteu o ticket."
+        entity:
+          type: foreign
+          name: remetente
+      - name: created_at
+        description: "Timestamp de criação do ticket."
+        granularity: day
+        dimension:
+          type: time
+        data_tests: [not_null]
+      - name: solved_at
+        description: "Timestamp de resolução do ticket."
+        granularity: day
+        dimension:
+          type: time
+      - name: status
+        description: "Status operacional atual do ticket."
+        dimension:
+          type: categorical
+        data_tests: [not_null]
+      - name: priority
+        description: "Prioridade do ticket."
+        dimension:
+          type: categorical
+      - name: via
+        description: "Canal de entrada do ticket."
+        dimension:
+          type: categorical
+      - name: satisfaction_rating
+        description: "Avaliação de satisfação associada ao ticket."
+        dimension:
+          type: categorical
+      - name: is_public
+        description: "Indica se o ticket ou interação associada é pública."
+        dimension:
+          type: categorical
+      - name: has_incidents
+        description: "Indica se o ticket possui incidentes relacionados."
+        dimension:
+          type: categorical
+      - name: from_messaging_channel
+        description: "Indica se o ticket veio de canal de mensageria."
+        dimension:
+          type: categorical
+      - name: cf_motivo_de_contato
+        description: "Motivo de contato informado no campo customizado do ticket."
+        dimension:
+          type: categorical
+      - name: cf_tag_de_atendimento
+        description: "Tag principal de atendimento do ticket."
+        dimension:
+          type: categorical
+      - name: cf_tag_de_atendimento_2
+        description: "Tag secundária de atendimento do ticket."
+        dimension:
+          type: categorical
+      - name: cf_tag_de_atendimento_3
+        description: "Tag terciária de atendimento do ticket."
+        dimension:
+          type: categorical
+      - name: cf_migracao_de_area
+        description: "Indicador ou categoria de migração de área do ticket."
+        dimension:
+          type: categorical
+      - name: cf_hsm_status
+        description: "Status do HSM associado ao ticket."
+        dimension:
+          type: categorical
 
   - name: dim_users
     description: "Dimensão de usuários do Zendesk com atributos cadastrais e operacionais relevantes para análise de tickets."
@@ -91,6 +255,23 @@ models:
 
   - name: zendesk_ticket_field_options
     description: "Lista as opções disponíveis para campos customizados de ticket a partir da configuração dos ticket fields no Zendesk."
+    columns:
+      - name: field_id
+        description: "Identificador do campo customizado de ticket."
+        data_tests: [not_null]
+      - name: option_value
+        description: "Valor técnico da opção disponível para o campo customizado."
+        data_tests: [not_null]
+
+
+  - name: time_spine_daily
+    description: "Espinha temporal diária para suportar métricas e agregações temporais na camada semântica."
+    time_spine:
+      standard_granularity_column: date_day
+    columns:
+      - name: date_day
+        description: "Data diária usada como granularidade padrão da time spine."
+        granularity: day
 
   - name: kpi_tickets
     description: "Modelo reservado para KPIs de tickets, mantido desabilitado até a definição da lógica de negócio correspondente."
