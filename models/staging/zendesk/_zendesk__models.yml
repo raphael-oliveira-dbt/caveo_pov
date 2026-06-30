@@ -2,79 +2,261 @@ version: 2
 
 models:
   - name: stg_zendesk__groups
-    description: "Grupos do Zendesk com tipagem dos campos principais e remoção de duplicidades da camada bronze."
+    description: "Camada de staging dos grupos do Zendesk. Replica a visão bronze do legado para entidades sem filtro de marca, tipa os principais atributos do payload RAW_DATA e mantém somente a versão mais recente de cada grupo com base em updated_at e _snowflake_loaded_at."
     columns:
       - name: group_id
-        description: "Identificador único do grupo no Zendesk."
+        description: "Identificador único do grupo no Zendesk; define a granularidade de uma linha por grupo na staging."
         data_tests: [unique, not_null]
+      - name: name
+        description: "Nome do grupo responsável por filas ou roteamento de tickets no Zendesk."
+      - name: description
+        description: "Descrição textual do grupo conforme cadastrado no Zendesk."
+      - name: is_default
+        description: "Indica se o grupo é o grupo padrão definido no Zendesk."
+      - name: deleted
+        description: "Indica se o grupo foi marcado como removido na origem."
+      - name: created_at
+        description: "Timestamp de criação do grupo no Zendesk."
+      - name: updated_at
+        description: "Timestamp da última atualização do grupo no Zendesk, usado para priorizar o registro mais recente."
+      - name: datalake_updated_at
+        description: "Timestamp técnico informado pela ingestão do datalake para o payload do grupo."
+      - name: _snowflake_loaded_at
+        description: "Timestamp em que o registro bronze foi carregado no Snowflake."
 
   - name: stg_zendesk__organizations
-    description: "Organizações do Zendesk com tipagem dos campos principais e remoção de duplicidades."
+    description: "Camada de staging das organizações do Zendesk. Mantém todas as organizações da bronze, tipa os campos principais e deduplica para um único registro atual por organization_id."
     columns:
       - name: organization_id
-        description: "Identificador único da organização no Zendesk."
+        description: "Identificador único da organização no Zendesk; define a granularidade de uma linha por organização."
         data_tests: [unique, not_null]
+      - name: name
+        description: "Nome da organização cadastrada no Zendesk."
+      - name: shared_tickets
+        description: "Indica se os tickets da organização podem ser compartilhados no Zendesk."
+      - name: shared_comments
+        description: "Indica se comentários da organização podem ser compartilhados no Zendesk."
       - name: group_id
         description: "Identificador do grupo associado à organização, quando informado no Zendesk."
+      - name: created_at
+        description: "Timestamp de criação da organização no Zendesk."
+      - name: updated_at
+        description: "Timestamp da última atualização da organização no Zendesk."
+      - name: datalake_updated_at
+        description: "Timestamp técnico de atualização do payload no datalake."
+      - name: _snowflake_loaded_at
+        description: "Timestamp de carga do registro bronze no Snowflake."
 
   - name: stg_zendesk__users
-    description: "Usuários do Zendesk com campos tipados, padronização textual e um registro mais recente por usuário."
+    description: "Camada de staging dos usuários do Zendesk. Replica integralmente a visão bronze legada para usuários, padroniza campos textuais relevantes, preserva atributos operacionais e mantém somente o registro mais recente por user_id."
     columns:
       - name: user_id
-        description: "Identificador único do usuário no Zendesk."
+        description: "Identificador único do usuário no Zendesk; define a granularidade de uma linha por usuário."
         data_tests: [unique, not_null]
+      - name: name
+        description: "Nome do usuário padronizado em caixa alta para facilitar buscas e joins textuais."
+      - name: email
+        description: "Endereço de e-mail do usuário em caixa baixa; coluna sensível usada para dimensões e políticas de masking nas camadas analíticas."
       - name: role
-        description: "Papel do usuário no Zendesk, padronizado em caixa alta."
+        description: "Papel do usuário no Zendesk, padronizado em caixa alta. Distingue agentes, administradores e usuários finais."
         data_tests:
           - accepted_values:
               arguments:
                 values: ['AGENT', 'ADMIN', 'END-USER']
+      - name: locale
+        description: "Localidade preferencial do usuário no Zendesk."
+      - name: time_zone
+        description: "Fuso horário associado ao usuário no Zendesk."
+      - name: tags
+        description: "Lista serializada de tags atribuídas ao usuário na origem."
+      - name: user_fields
+        description: "Estrutura serializada com campos customizados do usuário conforme payload original."
+      - name: active
+        description: "Indica se o usuário está ativo na plataforma."
+      - name: verified
+        description: "Indica se o usuário teve verificação concluída no Zendesk."
+      - name: suspended
+        description: "Indica se o usuário está suspenso."
+      - name: moderator
+        description: "Indica se o usuário possui perfil de moderador."
+      - name: restricted_agent
+        description: "Indica se o agente possui restrições operacionais no Zendesk."
+      - name: shared
+        description: "Indica se o usuário é compartilhado entre contas ou contextos no Zendesk."
+      - name: shared_agent
+        description: "Indica se o agente é compartilhado."
+      - name: ticket_restriction
+        description: "Restrição de visibilidade ou atuação sobre tickets associada ao usuário."
+      - name: organization_id
+        description: "Identificador da organização à qual o usuário está vinculado, quando aplicável."
+      - name: external_id
+        description: "Identificador externo do usuário usado para integração com sistemas fora do Zendesk."
+      - name: phone
+        description: "Telefone do usuário conforme payload original; coluna sensível sujeita a masking nas camadas analíticas."
+      - name: created_at
+        description: "Timestamp de criação do usuário no Zendesk."
+      - name: updated_at
+        description: "Timestamp da última atualização do usuário no Zendesk, usado para deduplicação."
+      - name: datalake_updated_at
+        description: "Timestamp técnico de atualização do payload no datalake."
+      - name: _snowflake_loaded_at
+        description: "Timestamp de carga do registro bronze no Snowflake."
 
   - name: stg_zendesk__ticket_fields
-    description: "Definições dos campos de ticket do Zendesk, incluindo metadados e opções de campos customizados."
+    description: "Camada de staging das definições de campos de ticket do Zendesk. Mantém o catálogo de campos customizados e suas opções para suportar o pivot de custom_fields e a interpretação semântica dos valores nos marts."
     columns:
       - name: field_id
         description: "Identificador único do campo de ticket no Zendesk."
         data_tests: [unique, not_null]
+      - name: type
+        description: "Tipo técnico do campo configurado no Zendesk."
+      - name: title
+        description: "Nome exibido do campo de ticket para agentes e usuários."
+      - name: raw_title
+        description: "Título bruto do campo conforme retornado pela API do Zendesk."
+      - name: description
+        description: "Descrição funcional do campo customizado, quando cadastrada na origem."
+      - name: raw_description
+        description: "Descrição bruta do campo conforme payload original."
+      - name: position
+        description: "Posição de exibição do campo no formulário do ticket."
+      - name: active
+        description: "Indica se o campo customizado está ativo no Zendesk."
+      - name: required
+        description: "Indica se o preenchimento do campo é obrigatório."
+      - name: collapsed_for_agents
+        description: "Indica se o campo aparece recolhido para agentes na interface."
+      - name: regexp_for_validation
+        description: "Expressão regular de validação associada ao campo, quando configurada."
+      - name: title_in_portal
+        description: "Título exibido no portal para usuários finais."
+      - name: raw_title_in_portal
+        description: "Título bruto exibido no portal conforme payload original."
+      - name: visible_in_portal
+        description: "Indica se o campo é visível no portal do Zendesk."
+      - name: editable_in_portal
+        description: "Indica se o campo pode ser editado no portal do Zendesk."
+      - name: required_in_portal
+        description: "Indica se o campo é obrigatório no portal do Zendesk."
+      - name: tag
+        description: "Tag associada automaticamente ao campo ou às opções do campo."
+      - name: custom_field_options
+        description: "Lista serializada de opções do campo customizado, usada para explodir valores em modelo auxiliar."
+      - name: created_at
+        description: "Timestamp de criação do campo no Zendesk."
+      - name: updated_at
+        description: "Timestamp da última atualização do campo no Zendesk."
+      - name: datalake_updated_at
+        description: "Timestamp técnico de atualização do payload no datalake."
+      - name: _snowflake_loaded_at
+        description: "Timestamp de carga do registro bronze no Snowflake."
 
   - name: stg_zendesk__tickets
-    description: "Tickets das marcas de CX com os principais atributos extraídos do payload bruto e um registro mais recente por ticket."
+    description: "Camada de staging dos tickets de CX. Esta modelagem corresponde à secure view do legado em CX.BRONZE: aplica o filtro de brand_id para as marcas 34126647548180 e 43696510017940, tipa os principais atributos do ticket e mantém apenas a versão mais recente por ticket_id."
     columns:
       - name: ticket_id
-        description: "Identificador único do ticket no Zendesk."
+        description: "Identificador único do ticket no Zendesk; define a granularidade de uma linha por ticket na staging."
         data_tests: [unique, not_null]
+      - name: subject
+        description: "Assunto do ticket padronizado em caixa alta. Pode conter PII e recebe masking nas camadas analíticas."
+      - name: description
+        description: "Descrição textual completa do ticket conforme payload original. Pode conter PII."
       - name: status
         description: "Status atual do ticket, padronizado em caixa alta."
         data_tests:
           - accepted_values:
               arguments:
                 values: ['NEW', 'OPEN', 'PENDING', 'HOLD', 'SOLVED', 'CLOSED']
+      - name: priority
+        description: "Prioridade operacional do ticket, padronizada em caixa alta quando disponível."
+      - name: brand_id
+        description: "Identificador da marca do ticket. O modelo mantém apenas tickets das marcas de CX definidas no legado."
       - name: assignee_id
         description: "Identificador do agente atualmente responsável pelo ticket."
       - name: requester_id
         description: "Identificador do usuário que abriu ou solicitou o ticket."
+      - name: submitter_id
+        description: "Identificador do usuário que submeteu o ticket."
       - name: organization_id
         description: "Identificador da organização vinculada ao ticket."
       - name: group_id
         description: "Identificador do grupo responsável pelo ticket."
+      - name: ticket_form_id
+        description: "Identificador do formulário de ticket utilizado na criação ou atualização."
+      - name: via
+        description: "Canal de entrada do ticket conforme payload original do Zendesk."
+      - name: tags
+        description: "Lista serializada de tags associadas ao ticket."
+      - name: satisfaction_rating
+        description: "Estrutura serializada da avaliação de satisfação vinculada ao ticket."
+      - name: is_public
+        description: "Indica se o ticket ou a interação principal está marcada como pública."
+      - name: has_incidents
+        description: "Indica se o ticket possui incidentes relacionados."
+      - name: from_messaging_channel
+        description: "Indica se o ticket foi originado em canal de mensageria."
+      - name: custom_fields_json
+        description: "Payload serializado dos custom_fields do ticket, usado como insumo para o pivot na camada intermediate."
+      - name: created_at
+        description: "Timestamp de criação do ticket no Zendesk."
+      - name: updated_at
+        description: "Timestamp da última atualização do ticket no Zendesk, usado para deduplicação."
+      - name: datalake_updated_at
+        description: "Timestamp técnico de atualização do payload no datalake."
+      - name: _snowflake_loaded_at
+        description: "Timestamp de carga do registro bronze no Snowflake."
 
   - name: stg_zendesk__tickets_events
-    description: "Auditorias de tickets das marcas de CX, preservando o conteúdo bruto dos eventos filhos para transformação posterior."
+    description: "Camada de staging das auditorias de tickets de CX. Esta modelagem corresponde à secure view legada de events: mantém somente eventos cujo ticket exista em stg_zendesk__tickets, preservando tanto os campos legados quanto o payload child_events para unpivot posterior."
     columns:
       - name: audit_id
-        description: "Identificador único da auditoria do ticket no Zendesk."
+        description: "Identificador único da auditoria do ticket no Zendesk; representa o evento pai recebido na origem."
         data_tests: [unique, not_null]
+      - name: ticket_id
+        description: "Identificador do ticket ao qual a auditoria pertence; herda indiretamente o filtro de marcas de CX via relacionamento com stg_zendesk__tickets."
+      - name: updater_id
+        description: "Identificador do usuário que executou a atualização registrada na auditoria."
+      - name: legacy_author_id
+        description: "Autor do evento no formato legado retornado diretamente no payload da auditoria."
+      - name: legacy_field_name
+        description: "Nome do campo alterado no formato legado, quando o payload vem achatado em vez de child_events."
+      - name: legacy_value
+        description: "Valor associado ao campo legado alterado na auditoria."
+      - name: child_events
+        description: "Payload serializado com os eventos filhos da auditoria, usado para gerar histórico normalizado de mudanças e comentários."
+      - name: created_at
+        description: "Timestamp de criação da auditoria no Zendesk."
+      - name: datalake_updated_at
+        description: "Timestamp técnico de atualização do payload no datalake."
+      - name: _snowflake_loaded_at
+        description: "Timestamp de carga do registro bronze no Snowflake."
 
   - name: stg_zendesk__ticket_metrics
-    description: "Métricas legadas de tickets mantidas para compor o histórico antes da fonte completa de métricas."
+    description: "Camada de staging da fonte legada de métricas de tickets. Preserva o histórico anterior à fonte completa e serve de insumo para a união controlada de métricas, considerando apenas registros com reply_time_in_minutes preenchido."
     columns:
       - name: ticket_metric_id
         description: "Identificador único do registro de métrica legado."
         data_tests: [unique, not_null]
+      - name: ticket_id
+        description: "Identificador do ticket ao qual a métrica pertence."
+      - name: reply_time_in_minutes
+        description: "Tempo de primeira resposta em minutos; no legado funciona como critério para manter apenas registros úteis da fonte antiga."
+      - name: updated_at
+        description: "Timestamp da última atualização da métrica na origem."
+      - name: _snowflake_loaded_at
+        description: "Timestamp de carga do registro bronze no Snowflake."
 
   - name: stg_zendesk__ticket_metrics_full
-    description: "Métricas completas de tickets obtidas da fonte mais recente, tratadas como a versão autoritativa após 2026-05-04."
+    description: "Camada de staging da fonte completa de metric_sets. É a fonte autoritativa após 2026-05-04 e complementa ou substitui a fonte legada no processo de deduplicação por ticket."
     columns:
       - name: ticket_metric_id
         description: "Identificador único do registro de métrica na fonte completa."
         data_tests: [unique, not_null]
+      - name: ticket_id
+        description: "Identificador do ticket ao qual a métrica pertence."
+      - name: reply_time_in_minutes
+        description: "Tempo de primeira resposta em minutos retornado pela fonte completa de metric_sets."
+      - name: updated_at
+        description: "Timestamp da última atualização da métrica completa na origem."
+      - name: _snowflake_loaded_at
+        description: "Timestamp de carga do registro bronze no Snowflake."

@@ -2,32 +2,138 @@ version: 2
 
 models:
   - name: int_zendesk__tickets_metrics_joined
-    description: "Consolida as métricas legadas e completas de tickets, preservando apenas a versão mais recente de cada ticket."
+    description: "Consolida as duas fontes de métricas de tickets para reproduzir a lógica da procedure silver legada. Mantém registros da fonte antiga apenas quando reply_time_in_minutes está preenchido, une com a fonte completa de metric_sets e escolhe um único registro mais recente por ticket_id priorizando a fonte completa."
     columns:
       - name: ticket_id
         description: "Identificador único do ticket usado como chave da consolidação de métricas."
         data_tests: [unique, not_null]
+      - name: reopens
+        description: "Quantidade de reaberturas do ticket."
+      - name: replies
+        description: "Quantidade de respostas associadas ao ticket."
+      - name: assignee_stations
+        description: "Quantidade de trocas de agente ao longo do ciclo de vida do ticket."
+      - name: group_stations
+        description: "Quantidade de trocas de grupo ao longo do ciclo de vida do ticket."
+      - name: agent_wait_time_in_minutes
+        description: "Tempo de espera do agente em minutos, conforme payload de métricas."
+      - name: requester_wait_time_in_minutes
+        description: "Tempo de espera do solicitante em minutos, conforme payload de métricas."
+      - name: first_resolution_time_in_minutes
+        description: "Tempo até a primeira resolução do ticket em minutos."
+      - name: full_resolution_time_in_minutes
+        description: "Tempo total de resolução do ticket em minutos."
+      - name: on_hold_time_in_minutes
+        description: "Tempo em hold do ticket em minutos."
+      - name: reply_time_in_minutes
+        description: "Tempo de primeira resposta em minutos."
+      - name: assigned_at
+        description: "Timestamp de atribuição do ticket."
+      - name: initially_assigned_at
+        description: "Timestamp da primeira atribuição do ticket."
+      - name: solved_at
+        description: "Timestamp em que o ticket foi resolvido."
+      - name: latest_comment_added_at
+        description: "Timestamp do comentário mais recente associado ao ticket."
+      - name: metric_created_at
+        description: "Timestamp de criação do registro de métricas na origem."
+      - name: metric_updated_at
+        description: "Timestamp da última atualização do registro de métricas usado na deduplicação."
+      - name: metric_datalake_updated_at
+        description: "Timestamp técnico de atualização do payload de métricas no datalake."
+      - name: metric_snowflake_loaded_at
+        description: "Timestamp de carga do registro de métricas no Snowflake."
 
   - name: int_zendesk__tickets_custom_fields
-    description: "Transforma os custom_fields dos tickets em colunas analíticas guiadas pelo seed de mapeamento de campos."
+    description: "Transforma o array de custom_fields dos tickets em colunas analíticas estáveis, guiadas pelo seed zendesk_custom_field_map. Essa abordagem substitui o hard-code de IDs presente na procedure silver por um mapeamento versionado em dbt."
     columns:
       - name: ticket_id
         description: "Identificador único do ticket ao qual os campos customizados pertencem."
         data_tests: [unique, not_null]
+      - name: cf_acionar_contabilidade
+        description: "Valor do campo customizado de acionamento de contabilidade."
+      - name: cf_motivo_de_contato
+        description: "Motivo de contato informado no ticket."
+      - name: cf_tag_de_atendimento
+        description: "Tag principal de atendimento."
+      - name: cf_tag_de_atendimento_2
+        description: "Tag secundária de atendimento."
+      - name: cf_adicionar_segundo_periodo_ferias
+        description: "Indicador relacionado ao segundo período de férias."
+      - name: cf_adicionar_terceiro_periodo_ferias
+        description: "Indicador relacionado ao terceiro período de férias."
+      - name: cf_conversation_id
+        description: "Identificador de conversa associado ao ticket."
+      - name: cf_hsm_data
+        description: "Data vinculada ao HSM do ticket."
+      - name: cf_hsm_descricao_template
+        description: "Descrição do template HSM associado ao ticket."
+      - name: cf_hsm_status
+        description: "Status do HSM associado ao ticket."
+      - name: cf_hsm_template
+        description: "Template HSM associado ao ticket."
+      - name: cf_whatsapp_id
+        description: "Identificador de WhatsApp associado ao atendimento."
+      - name: cf_migracao_de_area
+        description: "Indicador ou categoria de migração de área."
+      - name: cf_tag_de_atendimento_3
+        description: "Tag terciária de atendimento."
+      - name: cf_renovou_certificado_ecnpj
+        description: "Indicador de renovação de certificado eCNPJ."
+      - name: cf_atribuicao_automatica
+        description: "Indicador de atribuição automática do ticket."
+      - name: cf_piece_of_cake_disparo
+        description: "Indicador ou valor do disparo Piece of Cake."
 
   - name: int_zendesk__ticket_events_unpivoted
-    description: "Expande as auditorias e seus eventos filhos em um conjunto normalizado com uma linha por campo alterado em cada evento."
+    description: "Normaliza o histórico de auditorias dos tickets em uma linha por campo alterado. Combina eventos legados achatados com child_events extraídos do payload JSON, reproduzindo a intenção da procedure gold que gera a tabela de eventos analíticos."
     columns:
       - name: id
         description: "Identificador do evento filho ou do evento legado que originou a linha."
         data_tests: [not_null]
+      - name: ticket_id
+        description: "Identificador do ticket ao qual a alteração pertence."
       - name: field_name
-        description: "Nome do campo alterado no evento, usado para definir a granularidade analítica do histórico de mudanças."
+        description: "Nome do campo alterado no evento; junto com id, define a granularidade analítica do histórico de mudanças."
         data_tests: [not_null]
+      - name: value
+        description: "Valor registrado para o campo alterado no evento."
+      - name: author_id
+        description: "Identificador do usuário que originou a alteração registrada."
+      - name: created_at
+        description: "Timestamp de criação do evento no Zendesk."
+      - name: datalake_updated_at
+        description: "Timestamp técnico de atualização do payload do evento no datalake."
+      - name: _snowflake_loaded_at
+        description: "Timestamp de carga do registro no Snowflake."
 
   - name: int_zendesk__ticket_comments
-    description: "Extrai comentários de tickets a partir das auditorias, preservando os metadados necessários para análise."
+    description: "Extrai comentários de tickets a partir dos child_events de auditoria. Mantém uma linha por comentário com os principais metadados operacionais, separando o fluxo de comentários do histórico geral de alterações."
     columns:
       - name: id
         description: "Identificador único do comentário no Zendesk."
         data_tests: [unique, not_null]
+      - name: audit_id
+        description: "Identificador da auditoria pai da qual o comentário foi extraído."
+      - name: ticket_id
+        description: "Identificador do ticket ao qual o comentário pertence."
+      - name: author_id
+        description: "Identificador do autor do comentário."
+      - name: is_public
+        description: "Indica se o comentário é público no Zendesk."
+      - name: via
+        description: "Canal ou mecanismo de envio do comentário."
+      - name: type
+        description: "Tipo do evento de comentário conforme payload original."
+      - name: body
+        description: "Corpo bruto do comentário; pode conter PII e texto livre."
+      - name: html_body
+        description: "Versão HTML do corpo do comentário."
+      - name: plain_body
+        description: "Versão plain text do corpo do comentário."
+      - name: created_at
+        description: "Timestamp de criação do comentário no Zendesk."
+      - name: datalake_updated_at
+        description: "Timestamp técnico de atualização do payload do comentário no datalake."
+      - name: _snowflake_loaded_at
+        description: "Timestamp de carga do registro no Snowflake."
