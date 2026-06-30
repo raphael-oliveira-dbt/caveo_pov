@@ -2,13 +2,13 @@ version: 2
 
 models:
   - name: fct_tickets
-    description: "Tabela fato principal de tickets de CX, com um registro por ticket e atributos operacionais, métricas e campos customizados relevantes para análise."
+    description: "Fato principal de tickets de CX, com uma linha por ticket. Reúne os atributos filtrados na staging, o pivot de custom_fields e a consolidação de métricas para substituir a procedure silver/gold legada em um modelo analítico rastreável no DAG."
     semantic_model:
       enabled: true
     agg_time_dimension: created_at
     metrics:
       - name: total_tickets
-        description: "Quantidade total de tickets no Zendesk."
+        description: "Quantidade total de tickets no Zendesk dentro do escopo de marcas de CX."
         label: "Total de tickets"
         type: simple
         agg: count_distinct
@@ -80,11 +80,27 @@ models:
         expr: assignee_stations
     columns:
       - name: ticket_id
-        description: "Identificador único do ticket no Zendesk."
+        description: "Identificador único do ticket no Zendesk; define a granularidade da fato."
         entity:
           type: primary
           name: ticket
         data_tests: [unique, not_null]
+      - name: subject
+        description: "Assunto mais recente do ticket. Pode conter PII e recebe masking por post_hook no modelo."
+      - name: status
+        description: "Status operacional atual do ticket."
+        dimension:
+          type: categorical
+        data_tests: [not_null]
+      - name: priority
+        description: "Prioridade operacional do ticket."
+        dimension:
+          type: categorical
+      - name: brand_id
+        description: "Identificador da marca do ticket; o fato já nasce filtrado para o escopo de CX definido no legado."
+        entity:
+          type: foreign
+          name: marca
       - name: assignee_id
         description: "Identificador do agente responsável pelo ticket no momento refletido pelo registro mais recente."
         entity:
@@ -105,6 +121,11 @@ models:
               arguments:
                 to: ref('dim_users')
                 field: user_id
+      - name: submitter_id
+        description: "Identificador do usuário que submeteu o ticket."
+        entity:
+          type: foreign
+          name: remetente
       - name: organization_id
         description: "Identificador da organização associada ao ticket."
         entity:
@@ -120,40 +141,14 @@ models:
               arguments:
                 to: ref('dim_groups')
                 field: group_id
-      - name: brand_id
-        description: "Identificador da marca associada ao ticket."
-        entity:
-          type: foreign
-          name: marca
-      - name: submitter_id
-        description: "Identificador do usuário que submeteu o ticket."
-        entity:
-          type: foreign
-          name: remetente
-      - name: created_at
-        description: "Timestamp de criação do ticket."
-        granularity: day
-        dimension:
-          type: time
-        data_tests: [not_null]
-      - name: solved_at
-        description: "Timestamp de resolução do ticket."
-        granularity: day
-        dimension:
-          type: time
-      - name: status
-        description: "Status operacional atual do ticket."
-        dimension:
-          type: categorical
-        data_tests: [not_null]
-      - name: priority
-        description: "Prioridade do ticket."
-        dimension:
-          type: categorical
+      - name: ticket_form_id
+        description: "Identificador do formulário de ticket usado na origem."
       - name: via
         description: "Canal de entrada do ticket."
         dimension:
           type: categorical
+      - name: tags
+        description: "Lista serializada de tags atribuídas ao ticket."
       - name: satisfaction_rating
         description: "Avaliação de satisfação associada ao ticket."
         dimension:
@@ -170,6 +165,8 @@ models:
         description: "Indica se o ticket veio de canal de mensageria."
         dimension:
           type: categorical
+      - name: cf_acionar_contabilidade
+        description: "Campo customizado que indica necessidade de acionar contabilidade."
       - name: cf_motivo_de_contato
         description: "Motivo de contato informado no campo customizado do ticket."
         dimension:
@@ -194,9 +191,44 @@ models:
         description: "Status do HSM associado ao ticket."
         dimension:
           type: categorical
+      - name: reopens
+        description: "Quantidade de reaberturas registradas para o ticket."
+      - name: replies
+        description: "Quantidade de respostas registradas para o ticket."
+      - name: assignee_stations
+        description: "Quantidade de trocas de agente ao longo do ciclo do ticket."
+      - name: group_stations
+        description: "Quantidade de trocas de grupo ao longo do ciclo do ticket."
+      - name: reply_time_in_minutes
+        description: "Tempo de primeira resposta em minutos."
+      - name: full_resolution_time_in_minutes
+        description: "Tempo total de resolução em minutos."
+      - name: assigned_at
+        description: "Timestamp de atribuição do ticket."
+      - name: initially_assigned_at
+        description: "Timestamp da primeira atribuição do ticket."
+      - name: solved_at
+        description: "Timestamp de resolução do ticket."
+        granularity: day
+        dimension:
+          type: time
+      - name: latest_comment_added_at
+        description: "Timestamp do comentário mais recente no ticket."
+      - name: created_at
+        description: "Timestamp de criação do ticket."
+        granularity: day
+        dimension:
+          type: time
+        data_tests: [not_null]
+      - name: updated_at
+        description: "Timestamp da última atualização do ticket."
+      - name: datalake_updated_at
+        description: "Timestamp técnico de atualização do payload no datalake."
+      - name: _snowflake_loaded_at
+        description: "Timestamp de carga do registro no Snowflake."
 
   - name: dim_users
-    description: "Dimensão de usuários do Zendesk com atributos cadastrais e operacionais relevantes para análise de tickets."
+    description: "Dimensão de usuários do Zendesk com atributos cadastrais e operacionais relevantes para análise de tickets. Diferente da gold legada, este modelo preserva e mascara colunas sensíveis úteis para exploração controlada."
     columns:
       - name: user_id
         description: "Identificador único do usuário no Zendesk."
@@ -207,23 +239,51 @@ models:
           - accepted_values:
               arguments:
                 values: ['AGENT', 'ADMIN', 'END-USER']
+      - name: organization_id
+        description: "Identificador da organização associada ao usuário."
+      - name: external_id
+        description: "Identificador externo usado em integrações com outros sistemas."
+      - name: email
+        description: "E-mail do usuário com masking aplicado via post_hook."
+      - name: phone
+        description: "Telefone do usuário com masking aplicado via post_hook."
+      - name: created_at
+        description: "Timestamp de criação do usuário."
+      - name: updated_at
+        description: "Timestamp da última atualização do usuário."
 
   - name: dim_agents
-    description: "Dimensão de agentes do Zendesk utilizada para análises de atendimento e roteamento de tickets."
+    description: "Dimensão derivada de stg_zendesk__users com somente usuários de role AGENT. Suporta análises de atendimento, roteamento e ownership dos tickets."
     columns:
       - name: agent_id
         description: "Identificador único do agente no Zendesk."
         data_tests: [unique, not_null]
+      - name: name
+        description: "Nome do agente."
+      - name: external_id
+        description: "Identificador externo do agente."
+      - name: role
+        description: "Role do usuário filtrada para AGENT."
+      - name: organization_id
+        description: "Organização associada ao agente, quando existir."
 
   - name: dim_groups
-    description: "Dimensão de grupos do Zendesk utilizada para análises de filas e responsabilidade por tickets."
+    description: "Dimensão de grupos do Zendesk usada para análises de filas, ownership e handoffs entre grupos."
     columns:
       - name: group_id
         description: "Identificador único do grupo no Zendesk."
         data_tests: [unique, not_null]
+      - name: name
+        description: "Nome do grupo."
+      - name: description
+        description: "Descrição funcional do grupo."
+      - name: is_default
+        description: "Indica se o grupo é o grupo padrão na origem."
+      - name: deleted
+        description: "Indica se o grupo foi marcado como removido."
 
   - name: fct_ticket_events
-    description: "Tabela fato de histórico de alterações dos tickets, com uma linha por combinação de evento e campo alterado."
+    description: "Fato de histórico de alterações dos tickets, com uma linha por combinação de evento e campo alterado. É o equivalente analítico da procedure gold de events, só que modelado no DAG e validado por testes de granularidade."
     columns:
       - name: id
         description: "Identificador do evento que originou a alteração registrada."
@@ -238,13 +298,21 @@ models:
       - name: field_name
         description: "Nome do campo alterado no evento; junto com id, define a granularidade da tabela."
         data_tests: [not_null]
+      - name: value
+        description: "Valor registrado para o campo alterado."
+      - name: author_id
+        description: "Identificador do autor da alteração."
+      - name: created_at
+        description: "Timestamp de criação do evento."
 
   - name: fct_ticket_comments
-    description: "Tabela fato de comentários de tickets, com um registro por comentário e foco em metadados para análise."
+    description: "Fato de comentários de tickets, com uma linha por comentário extraído das auditorias. Mantém foco em metadados operacionais; o corpo do comentário fica tratado na intermediate para evitar exposição desnecessária na fato."
     columns:
       - name: id
         description: "Identificador único do comentário no Zendesk."
         data_tests: [unique, not_null]
+      - name: audit_id
+        description: "Identificador da auditoria da qual o comentário foi extraído."
       - name: ticket_id
         description: "Identificador do ticket ao qual o comentário pertence."
         data_tests:
@@ -252,9 +320,19 @@ models:
               arguments:
                 to: ref('fct_tickets')
                 field: ticket_id
+      - name: author_id
+        description: "Identificador do autor do comentário."
+      - name: is_public
+        description: "Indica se o comentário é público."
+      - name: via
+        description: "Canal ou mecanismo de envio do comentário."
+      - name: type
+        description: "Tipo do evento de comentário."
+      - name: created_at
+        description: "Timestamp de criação do comentário."
 
   - name: zendesk_ticket_field_options
-    description: "Lista as opções disponíveis para campos customizados de ticket a partir da configuração dos ticket fields no Zendesk."
+    description: "Explode as opções configuradas para campos customizados de ticket a partir de stg_zendesk__ticket_fields. Ajuda a interpretar valores técnicos e a construir filtros analíticos mais legíveis."
     columns:
       - name: field_id
         description: "Identificador do campo customizado de ticket."
@@ -262,7 +340,8 @@ models:
       - name: option_value
         description: "Valor técnico da opção disponível para o campo customizado."
         data_tests: [not_null]
-
+      - name: option_name
+        description: "Rótulo legível da opção configurada no Zendesk."
 
   - name: time_spine_daily
     description: "Espinha temporal diária para suportar métricas e agregações temporais na camada semântica."
@@ -274,4 +353,4 @@ models:
         granularity: day
 
   - name: kpi_tickets
-    description: "Modelo reservado para KPIs de tickets, mantido desabilitado até a definição da lógica de negócio correspondente."
+    description: "Modelo reservado para KPIs de tickets. O legado referencia uma procedure KPI_TICKETS na task gold, mas a definição dessa procedure não está presente nos scripts versionados; por isso este modelo permanece apenas como placeholder até a regra de negócio ser fornecida."
