@@ -18,7 +18,8 @@ metrics as (
 ),
 final as (
     select
-        t.ticket_id,
+        1 as ticket_id,
+        --t.ticket_id,
         t.subject,
         t.status,
         t.priority,
